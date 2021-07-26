@@ -1,5 +1,9 @@
 An experimental build of the core20 snap, solely using snapcraft.yaml
 
+to build this snap just clone the tree into a 20.04 lxd container and run
+
+    snapcraft --destructive-mode
+
 TODO: the following hook scripts will need to be ported from the old code still:
   - 500-create-xdg.chroot 
   - 030-fix-timedatectl.chroot 
