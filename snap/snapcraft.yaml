@@ -1,0 +1,588 @@
+name: core20
+build-base: core20
+adopt-info: bootstrap
+summary: Runtime environment based on Ubuntu 20.04
+description: |
+  The base snap based on the Ubuntu 20.04 release.
+grade: stable
+confinement: strict
+type: base
+
+#compression: lzo
+
+package-repositories:
+ - type: apt
+   ppa: canonical-foundations/ubuntu-image
+
+parts:
+  bootstrap:
+    plugin: nil
+    build-environment:
+      - RELEASE: $(grep UBUNTU_CODENAME /etc/os-release | sed 's/^.*=//')
+      - RVER: $(grep VERSION_ID /etc/os-release | sed 's/^.*=//;s/"//g')
+      - SRV: http://cdimage.ubuntu.com/ubuntu-base/releases
+      - LATEST: $(wget -q -O- $SRV/ | html2text -style pretty | sed 's/^* //;s/\/$//'| grep $RVER|sort|tail -1)
+      - FILE: ubuntu-base-$LATEST-base-$SNAPCRAFT_TARGET_ARCH.tar.gz
+      - SNAPCRAFT_CACHE: $HOME/.cache/snapcraft
+    override-pull: |
+      # get and uncompress latest ubuntu-base tarball
+      wget -q -O- $SRV/$RELEASE/release/$FILE | zcat | tar xf -
+      # set our version
+      snapcraftctl set-version "$(/bin/date +%Y%m%d)"
+    override-build: |
+      # cleanly copy ubuntu-base to install dir (remove all cruft first)
+      rm -rf $SNAPCRAFT_PART_INSTALL/*
+      cp -a $SNAPCRAFT_PART_SRC/* $SNAPCRAFT_PART_INSTALL/
+
+      # make sure we use a fixed password database (UIDs and GIDs may not change, we are
+      # a readonly rootfs and the few writable bits might have user assignments)
+      $SNAPCRAFT_PROJECT_DIR/scripts/pre-check-uids-gids.sh
+
+      # get list of all our stage packages from yaml
+      PKGS="$(cat $SNAPCRAFT_PROJECT_DIR/snap/snapcraft.yaml | \
+            /snap/bin/yq read - 'parts.bootstrap.stage-packages' | \
+            sed 's/^- //' | tr '\n' ' ' | sed 's/ $//')"
+
+      prepare(){
+        # mount virtual ilesystems
+        for virtfs in proc sys dev; do
+          mount --bind /$virtfs $SNAPCRAFT_PART_INSTALL/$virtfs
+        done
+        mount -t devpts devpts $SNAPCRAFT_PART_INSTALL/dev/pts
+      }
+
+      cleanup(){
+        # clean up virtual filesystem mounts, exit with error if told so
+        [ "$1" = "0" ] || echo "command failed, cleaning up ..."
+        umount $SNAPCRAFT_PART_INSTALL/dev/pts
+        for virtfs in proc sys dev; do
+          umount $SNAPCRAFT_PART_INSTALL/$virtfs
+        done
+        [ "$1" = "0" ] || exit $1
+      }
+
+      do_chroot(){
+        # prepare chroot
+        prepare
+        # run command
+        env DEBIAN_FRONTEND=noninteractive chroot $SNAPCRAFT_PART_INSTALL $1 || cleanup 1
+        # clean up chroot
+        cleanup 0
+      }
+
+      # copy snapcraft sources.list setup into target chroot
+      cp -a $SNAPCRAFT_CACHE/stage-packages/etc/apt $SNAPCRAFT_PART_INSTALL/etc/
+      cp -a $SNAPCRAFT_CACHE/stage-packages/var/lib/apt $SNAPCRAFT_PART_INSTALL/var/lib/
+
+      # handle name resolution
+      cat /etc/resolv.conf >$SNAPCRAFT_PART_INSTALL/etc/resolv.conf
+
+      # install all stage-packages in chroot
+      do_chroot "apt update"
+      do_chroot "apt dist-upgrade -y"
+      # copy already downloaded stage-packges from snapcraft cache
+      cp -a $SNAPCRAFT_CACHE/download/*.deb $SNAPCRAFT_PART_INSTALL/var/cache/apt/archives/
+      do_chroot "apt install --no-install-recommends -y $PKGS"
+      do_chroot "apt autoremove -y"
+      do_chroot "apt clean"
+    build-snaps:
+      - yq/v3/stable
+    build-packages:
+      - coreutils
+      - html2text
+      - tar
+      - wget
+    stage-packages:
+      - adduser
+      - apparmor
+      - apt
+      - base-files
+      - base-passwd
+      - bash
+      - bash-completion
+      - bsdutils
+      - bzip2
+      - ca-certificates
+      - cloud-guest-utils
+      - cloud-init
+      - console-conf
+      - coreutils
+      - cryptsetup
+      - cryptsetup-bin
+      - dash
+      - dbus
+      - dbus-user-session
+      - debconf
+      - debianutils
+      - diffutils
+      - distro-info-data
+      - dmsetup
+      - dosfstools
+      - dpkg
+      - e2fsprogs
+      - fdisk
+      - finalrd
+      - findutils
+      - gcc-10-base
+      - gdbserver
+      - gpgv
+      - grep
+      - gzip
+      - hostname
+      - init-system-helpers
+      - iproute2
+      - iptables
+      - iputils-ping
+      - isc-dhcp-client
+      - kmod
+      - less
+      - libacl1
+      - libapparmor1
+      - libapt-pkg6.0
+      - libargon2-1
+      - libattr1
+      - libaudit-common
+      - libaudit1
+      - libblkid1
+      - libbsd0
+      - libbz2-1.0
+      - libc-bin
+      - libc6
+      - libcap-ng0
+      - libcap2
+      - libcap2-bin
+      - libcbor0.6
+      - libcom-err2
+      - libcrypt1
+      - libcryptsetup12
+      - libdb5.3
+      - libdbus-1-3
+      - libdebconfclient0
+      - libdevmapper1.02.1
+      - libdns-export1109
+      - libedit2
+      - libelf1
+      - libexpat1
+      - libext2fs2
+      - libfdisk1
+      - libffi7
+      - libfido2-1
+      - libgcc-s1
+      - libgcrypt20
+      - libglib2.0-0
+      - libgmp10
+      - libgnutls30
+      - libgpg-error0
+      - libgssapi-krb5-2
+      - libhogweed5
+      - libidn2-0
+      - libip4tc2
+      - libip6tc2
+      - libisc-export1105
+      - libjson-c4
+      - libk5crypto3
+      - libkeyutils1
+      - libkmod2
+      - libkrb5-3
+      - libkrb5support0
+      - liblz4-1
+      - liblzma5
+      - liblzo2-2
+      - libmnl0
+      - libmount1
+      - libmpdec2
+      - libncurses6
+      - libncursesw6
+      - libnetfilter-conntrack3
+      - libnetplan0
+      - libnettle7
+      - libnfnetlink0
+      - libnftnl11
+      - libnl-3-200
+      - libnl-genl-3-200
+      - libnl-route-3-200
+      - libnss-extrausers
+      - libp11-kit0
+      - libpam-modules
+      - libpam-modules-bin
+      - libpam-runtime
+      - libpam-systemd
+      - libpam0g
+      - libpcre2-8-0
+      - libpcre3
+      - libpcsclite1
+      - libpopt0
+      - libprocps8
+      - libpython3-stdlib
+      - libpython3.8-minimal
+      - libpython3.8-stdlib
+      - libreadline8
+      - libseccomp2
+      - libselinux1
+      - libsemanage-common
+      - libsemanage1
+      - libsepol1
+      - libsmartcols1
+      - libsqlite3-0
+      - libss2
+      - libssl1.1
+      - libstdc++6
+      - libsystemd0
+      - libtasn1-6
+      - libtinfo6
+      - libudev1
+      - libunistring2
+      - libuuid1
+      - libwrap0
+      - libxtables12
+      - libyaml-0-2
+      - libzstd1
+      - login
+      - logsave
+      - lsb-base
+      - mawk
+      - mime-support
+      - mount
+      - ncurses-base
+      - ncurses-bin
+      - netbase
+      - netcat-openbsd
+      - netplan.io
+      - openssh-client
+      - openssh-server
+      - openssh-sftp-server
+      - openssl
+      - passwd
+      - perl-base
+      - probert-common
+      - probert-network
+      - procps
+      - python3
+      - python3-attr
+      - python3-blinker
+      - python3-certifi
+      - python3-cffi-backend
+      - python3-chardet
+      - python3-configobj
+      - python3-cryptography
+      - python3-distutils
+      - python3-idna
+      - python3-importlib-metadata
+      - python3-jinja2
+      - python3-json-pointer
+      - python3-jsonpatch
+      - python3-jsonschema
+      - python3-jwt
+      - python3-lib2to3
+      - python3-markupsafe
+      - python3-minimal
+      - python3-more-itertools
+      - python3-netifaces
+      - python3-oauthlib
+      - python3-pkg-resources
+      - python3-pyrsistent
+      - python3-pyudev
+      - python3-requests
+      - python3-requests-unixsocket
+      - python3-serial
+      - python3-setuptools
+      - python3-six
+      - python3-urllib3
+      - python3-urwid
+      - python3-yaml
+      - python3-zipp
+      - python3.8
+      - python3.8-minimal
+      - readline-common
+      - rfkill
+      - sbsigntool
+      - secureboot-db
+      - sed
+      - sensible-utils
+      - squashfs-tools
+      - subiquitycore
+      - sudo
+      - systemd
+      - systemd-sysv
+      - systemd-timesyncd
+      - sysvinit-utils
+      - tar
+      - tzdata
+      - ubuntu-keyring
+      - ucf
+      - udev
+      - util-linux
+      - vim-common
+      - vim-tiny
+      - wpasupplicant
+      - xxd
+      - zlib1g
+    stage:
+      - -etc/alternatives/*.gz
+      - -etc/apt
+      - -etc/binfmt.d
+      - -etc/cloud/cloud.cfg.d/90_dpkg.cfg
+      - -etc/cron.daily
+      - -etc/debian_version
+      - -etc/dpkg
+      - -etc/gai.conf
+      - -etc/hostname
+      - -etc/hosts
+      - -etc/issue
+      - -etc/issue.net
+      - -etc/kernel
+      - -etc/machine-id
+      - -etc/mke2fs.conf
+      - -etc/motd
+      - -etc/networks
+      - -etc/opt
+      - -etc/pam.conf
+      - -etc/profile.d/Z99-cloud*
+      - -etc/python3
+      - -etc/python3.6
+      - -etc/rc[0-6S].d
+      - -etc/rmt
+      - -etc/selinux
+      - -etc/sysctl.conf
+      - -etc/sysctl.d/99-sysctl.conf
+      - -etc/systemd/system/timers.target.wants/motd-news.timer
+      - -etc/terminfo
+      - -etc/tmpfiles.d
+      - -etc/update-motd.d/10-help-text
+      - -etc/update-motd.d/60-unminimize
+      - -lib/systemd/system/motd-news.service
+      - -lib/systemd/system/motd-news.timer
+      - -usr/bin/man
+      - -usr/lib/os-release
+      - -usr/lib/systemd/system-generators/systemd-gpt-auto-generator
+      - -usr/local
+      - -usr/local/lib/python*
+      - -var/cache/debconf
+      - -var/lib/dbus/machine-id
+      - -var/local
+      - -var/log/*
+      - -var/log/journal
+      - -var/log/private
+  static:
+    after: [ bootstrap ]
+    plugin: dump
+    source: https://github.com/snapcore/core20.git
+    source-subdir: static
+  extra-files:
+    after: [ static ]
+    plugin: nil
+    override-build: |
+      echo "creating /writable in target"
+      mkdir $SNAPCRAFT_PART_INSTALL/writable
+
+      echo "creating mtab and modules dir"
+      mkdir -p $SNAPCRAFT_PART_INSTALL/etc
+      ln -sf ../proc/self/mounts $SNAPCRAFT_PART_INSTALL/etc/mtab
+      mkdir -p $SNAPCRAFT_PART_INSTALL/usr/lib/modules
+      mkdir -p $SNAPCRAFT_PART_INSTALL/etc/modules-load.d
+      mkdir -p $SNAPCRAFT_PART_INSTALL/usr/lib/firmware
+      mkdir -p $SNAPCRAFT_PART_INSTALL/writable
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/systemd/rfkill
+      touch $SNAPCRAFT_PART_INSTALL/etc/machine-id
+      
+      echo "creating fontconfig mount points"
+      mkdir -p $SNAPCRAFT_PART_INSTALL/usr/share/fonts
+      mkdir -p $SNAPCRAFT_PART_INSTALL/usr/local/share/fonts
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/cache/fontconfig
+      
+      echo "creating snap dirs/files"
+      mkdir -p $SNAPCRAFT_PART_INSTALL/snap $SNAPCRAFT_PART_INSTALL/var/snap
+      mkdir -p $SNAPCRAFT_PART_INSTALL/usr/lib/snapd
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/cache/snapd
+      # workaround for seeding bug
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/apparmor/profiles
+      
+      echo "creating extra systemd dirs"
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/systemd/coredump
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/private/systemd
+      chmod 700 $SNAPCRAFT_PART_INSTALL/var/lib/private
+      
+      echo "extra cloud init files"
+      mkdir -p $SNAPCRAFT_PART_INSTALL/etc/cloud
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/cloud
+      
+      echo "ensure snapctl is available"
+      mkdir -p $SNAPCRAFT_PART_INSTALL/usr/bin
+      ln -s ../lib/snapd/snapctl $SNAPCRAFT_PART_INSTALL/usr/bin/snapctl
+      
+      echo "creating host mounts dir"
+      mkdir -p $SNAPCRAFT_PART_INSTALL/host
+ 
+      echo "creating snapd skeleton directory structure"
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/cache/snapd
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/apparmor/profiles
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/apparmor/snap-confine
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/assertions
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/cache
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/cookie
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/desktop/applications
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/device
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/hostfs
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/lib/gl
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/lib/gl32
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/lib/glvnd
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/lib/vulkan
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/mount
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/save
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/seccomp/bpf
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/seed
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/sequence
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/snaps
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/snapd/void
+
+      echo "creating the boot mount points"
+      mkdir -p $SNAPCRAFT_PART_INSTALL/boot/androidboot
+      mkdir -p $SNAPCRAFT_PART_INSTALL/boot/uboot
+      mkdir -p $SNAPCRAFT_PART_INSTALL/boot/grub
+      mkdir -p $SNAPCRAFT_PART_INSTALL/boot/efi
+
+      echo "creating the snap binary symlink"
+      ln -s /snap/snapd/current/usr/bin/snap $SNAPCRAFT_PART_INSTALL/usr/bin/snap
+
+      echo "creating empty /etc/hostname"
+      touch $SNAPCRAFT_PART_INSTALL/etc/hostname
+  os-release:
+    after: [ extra-files ]
+    plugin: nil
+    override-build: |
+      mkdir -p $SNAPCRAFT_PART_INSTALL/usr/lib
+      cat >$SNAPCRAFT_PART_INSTALL/usr/lib/os-release<<EOF
+      NAME="Ubuntu Core"
+      VERSION="20"
+      ID=ubuntu-core
+      PRETTY_NAME="Ubuntu Core 20"
+      VERSION_ID="20"
+      HOME_URL="https://snapcraft.io/"
+      BUG_REPORT_URL="https://bugs.launchpad.net/snappy/"
+      EOF
+  motd:
+    after: [ os-release ]
+    plugin: nil
+    override-build: |
+      mkdir -p $SNAPCRAFT_PART_INSTALL/etc
+      cat >$SNAPCRAFT_PART_INSTALL/etc/motd<<EOF
+       * Ubuntu Core:     https://www.ubuntu.com/core
+       * Community:       https://forum.snapcraft.io
+       * Snaps:           https://snapcraft.io
+
+      This Ubuntu Core 20 machine is a tiny, transactional edition of Ubuntu,
+      designed for appliances, firmware and fixed-function VMs.
+      If all the software you care about is available as snaps, you are in
+      the right place. If not, you will be more comfortable with classic
+      deb-based Ubuntu Server or Desktop, where you can mix snaps with
+      traditional debs. It's a brave new world here in Ubuntu Core!
+      Please see 'snap --help' for app installation and updates.
+      EOF
+    override-prime: |
+      snapcraftctl prime
+      sed -i 's/\/sbin\/agetty /\/sbin\/agetty -i /' \
+        lib/systemd/system/console-conf@.service \
+        lib/systemd/system/serial-console-conf\@.service
+
+      # fix login prompt
+      sed -i 's/^.*DESCRIPTION.*$/DISTRIB_DESCRIPTION="Ubuntu Core"/' etc/lsb-release
+  extrausers:
+    after: [ motd ]
+    plugin: nil
+    override-build: |
+      mkdir -p $SNAPCRAFT_PART_INSTALL/var/lib/extrausers
+      for name in group gshadow passwd shadow subuid subgid; do
+        touch $SNAPCRAFT_PART_INSTALL/var/lib/extrausers/$name
+      done
+      for name in gshadow shadow; do
+        chmod 640 $SNAPCRAFT_PART_INSTALL/var/lib/extrausers/$name
+        chown root:shadow $SNAPCRAFT_PART_INSTALL/var/lib/extrausers/$name
+      done
+    override-prime: |
+      snapcraftctl prime
+      sed -i 's/^passwd:.*files/\0 extrausers/' etc/nsswitch.conf
+      sed -i 's/^group:.*files/\0 extrausers/' etc/nsswitch.conf
+      sed -i 's/^shadow:.*files/\0 extrausers/' etc/nsswitch.conf
+      env DEBIAN_FRONTEND=noninteractive chroot . pam-auth-update --enable snappy-extrausers
+  ssh-keys:
+    after: [ extrausers ]
+    plugin: nil
+    override-prime: |
+      rm -f etc/ssh/ssh_host_*_key etc/ssh/ssh_host_*_key.pub
+  no-debian:
+    after: [ ssh-keys ]
+    plugin: nil
+    override-prime: |
+      # capture package list before removing everything
+      mkdir -p usr/share/snappy
+      chroot . dpkg -l >usr/share/snappy/dpkg.list
+
+      # remove dpkg and apt
+      env DEBIAN_FRONTEND=noninteractive chroot . dpkg --purge --force-depends apt libapt-pkg6.0 debconf
+      rm -r \
+              var/lib/dpkg \
+              var/cache/debconf \
+              usr/share/dpkg \
+              usr/share/doc/dpkg
+      rm \
+              usr/bin/dpkg \
+              usr/bin/dpkg-query \
+              usr/bin/dpkg-split \
+              usr/bin/dpkg-divert \
+              usr/bin/dpkg-trigger \
+              usr/bin/dpkg-statoverride \
+              usr/bin/dpkg-maintscript-helper \
+              etc/logrotate.d/dpkg \
+              usr/share/bash-completion/completions/apt* \
+              usr/share/bash-completion/completions/dpkg*
+      
+      # remove generated locales for packages we do not use
+      rm -f usr/share/locale/*/LC_MESSAGES/dpkg*
+      rm -f usr/share/locale/*/LC_MESSAGES/libapt*
+      # remove generated logs
+      rm -f var/log/bootstrap.log \
+            var/log/alternatives.log \
+            var/log/dpkg.log
+      # also remove obsolete cron jobs
+      rm -f etc/cron.daily/dpkg \
+            etc/cron.daily/passwd
+  move-alternatives:
+    after: [ no-debian ]
+    plugin: nil
+    override-prime: |
+      # move all alternatives links to /usr/bin
+      for file in $(find etc/alternatives/ -type l); do mv $file usr/bin/; done
+      # remove empty dir
+      rm -rf etc/alternatives
+  cleanup:
+    after: [ move-alternatives ]
+    plugin: nil
+    override-prime: |
+      rm -rf var/log/*
+      for CRUFT in bug lintian man; do
+        rm -rf $SNAPCRAFT_PRIME/usr/share/$CRUFT
+      done
+      find $SNAPCRAFT_PRIME/usr/share/doc -type f,l -not -name 'copyright' -delete
+      find $SNAPCRAFT_PRIME/usr/share -type d -empty -delete
+
+      # ensure the systemd target.wants are in /lib instead of /etc
+      for d in multi-user.target.wants sysinit.target.wants timers.target.wants; do
+        mv etc/systemd/system/"$d"/* lib/systemd/system/"$d"
+      done
+
+      # do a final check on GIDs and UIDs to make sure nothing during build has
+      # touched them.
+      $SNAPCRAFT_PROJECT_DIR/scripts/post-check-uids-gids.sh
+
+      # check that we do not use "synced" dirs
+      if grep -v '^#' <etc/system-image/writable-paths | grep synced; then
+        echo "Using 'synced' in /etc/system-image/writable-paths is not allowed in core20"
+        exit 1
+      fi
+
+      # Fix for LP: #1779416
+      sed -i -e '/\[ -e \/etc\/lsb-base-logging.sh \]/d' lib/lsb/init-functions
+
+      # clean resolv.conf
+      echo "" > $SNAPCRAFT_PRIME/etc/resolv.conf
