@@ -103,20 +103,38 @@ parts:
       # handle name resolution
       cat /etc/resolv.conf >$SNAPCRAFT_PART_INSTALL/etc/resolv.conf
 
-      # copy console-conf
+      # set multiarch bits
+      if [ "$SNAPCRAFT_TARGET_ARCH" = "amd64" ]; then
+        MULTIARCH="i386"
+      fi
+      if [ "$SNAPCRAFT_TARGET_ARCH" = "arm64" ]; then
+        MULTIARCH="armhf"
+      fi
+
+      # copy console-conf staged from former part
       cp $SNAPCRAFT_STAGE/console-conf_*.deb $SNAPCRAFT_STAGE/subiquitycore_*.deb \
           $SNAPCRAFT_PART_INSTALL/var/cache/apt/archives/
       CONSOLE_CONF="$(basename $SNAPCRAFT_PART_INSTALL/var/cache/apt/archives/console-conf_*.deb)"
       SUBIQUITY_CORE="$(basename $SNAPCRAFT_PART_INSTALL/var/cache/apt/archives/subiquitycore_*.deb)"
+
       # install all stage-packages in chroot
       do_chroot "apt update"
       do_chroot "apt dist-upgrade -y"
       # copy already downloaded stage-packges from snapcraft cache
       cp -a $SNAPCRAFT_CACHE/download/*.deb $SNAPCRAFT_PART_INSTALL/var/cache/apt/archives/
       do_chroot "apt install --no-install-recommends -y $PKGS"
+
       # install console-conf and subiquity
       do_chroot "apt install --no-install-recommends -y /var/cache/apt/archives/$CONSOLE_CONF \
                  /var/cache/apt/archives/$SUBIQUITY_CORE"
+
+      # handle multiarch
+      if [ -n "$MULTIARCH" ]; then
+        do_chroot "dpkg --add-architecture $MULTIARCH"
+        do_chroot "apt update"
+        do_chroot "apt install -y libc6:$MULTIARCH"
+      fi
+
       # clean up apt cache and remove unwanted packages
       do_chroot "apt autoremove -y"
       do_chroot "apt clean"
