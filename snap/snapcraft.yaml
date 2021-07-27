@@ -158,6 +158,8 @@ parts:
       - -etc/rc[0-6S].d
       - -etc/rmt
       - -etc/selinux
+      - -etc/ssh/ssh_host_*_key
+      - -etc/ssh/ssh_host_*_key.pub
       - -etc/sysctl.conf
       - -etc/sysctl.d/99-sysctl.conf
       - -etc/systemd/system/timers.target.wants/motd-news.timer
@@ -328,13 +330,8 @@ parts:
       sed -i 's/^group:.*files/\0 extrausers/' etc/nsswitch.conf
       sed -i 's/^shadow:.*files/\0 extrausers/' etc/nsswitch.conf
       env DEBIAN_FRONTEND=noninteractive chroot . pam-auth-update --enable snappy-extrausers
-  ssh-keys:
-    after: [ extrausers ]
-    plugin: nil
-    override-prime: |
-      rm -f etc/ssh/ssh_host_*_key etc/ssh/ssh_host_*_key.pub
   no-debian:
-    after: [ ssh-keys ]
+    after: [ extrausers ]
     plugin: nil
     override-prime: |
       # capture package list before removing everything
