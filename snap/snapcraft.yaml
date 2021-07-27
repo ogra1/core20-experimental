@@ -364,6 +364,9 @@ parts:
       - -usr/lib/systemd/system-generators/systemd-gpt-auto-generator
       - -usr/local
       - -usr/local/lib/python*
+      - -usr/share/bug
+      - -usr/share/lintian
+      - -usr/share/man
       - -var/cache/debconf
       - -var/lib/dbus/machine-id
       - -var/local
@@ -375,6 +378,9 @@ parts:
       etc/timezone: etc/writable/timezone
       etc/localtime: etc/writable/localtime
       etc/hostname: etc/writable/hostname
+      etc/systemd/system/multi-user.target.wants: lib/systemd/system/multi-user.target.wants
+      etc/systemd/system/sysinit.target.wants: lib/systemd/system/sysinit.target.wants
+      etc/systemd/system/timers.target.wants: lib/systemd/system/timers.target.wants
   static:
     after: [ bootstrap ]
     plugin: dump
@@ -568,17 +574,11 @@ parts:
     after: [ move-alternatives ]
     plugin: nil
     override-prime: |
+      # clean up log dir
       rm -rf var/log/*
-      for CRUFT in bug lintian man; do
-        rm -rf $SNAPCRAFT_PRIME/usr/share/$CRUFT
-      done
+      # drop everything but copyright files from doc dir
       find $SNAPCRAFT_PRIME/usr/share/doc -type f,l -not -name 'copyright' -delete
       find $SNAPCRAFT_PRIME/usr/share -type d -empty -delete
-
-      # ensure the systemd target.wants are in /lib instead of /etc
-      for d in multi-user.target.wants sysinit.target.wants timers.target.wants; do
-        mv etc/systemd/system/"$d"/* lib/systemd/system/"$d"
-      done
 
       # do a final check on GIDs and UIDs to make sure nothing during build has
       # touched them.
