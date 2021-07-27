@@ -15,8 +15,34 @@ package-repositories:
    ppa: canonical-foundations/ubuntu-image
 
 parts:
+  consoleconf-deb:
+    plugin: nil
+    source: https://github.com/CanonicalLtd/subiquity.git
+    source-type: git
+    source-branch: core/focal
+    build-environment:
+      - LD_FLAGS: ""
+      - LD_LIBRARY_PATH: ""
+    build-packages:
+      - debhelper
+      - dh-python
+      - dpkg-dev
+      - git
+      - iso-codes
+      - python3
+      - python3-attr
+      - python3-distutils-extra
+      - python3-setuptools
+      - python3-yaml
+    override-build: |
+      dpkg-buildpackage -b -uc -us -Zgzip -zfast
+      cp ../console-conf_*.deb ../subiquitycore_*.deb $SNAPCRAFT_PART_INSTALL
+    prime:
+      - -console-conf_*.deb
+      - -subiquitycore_*.deb
   bootstrap:
     plugin: nil
+    after: [ consoleconf-deb ]
     build-environment:
       - RELEASE: $(grep UBUNTU_CODENAME /etc/os-release | sed 's/^.*=//')
       - RVER: $(grep VERSION_ID /etc/os-release | sed 's/^.*=//;s/"//g')
@@ -77,12 +103,21 @@ parts:
       # handle name resolution
       cat /etc/resolv.conf >$SNAPCRAFT_PART_INSTALL/etc/resolv.conf
 
+      # copy console-conf
+      cp $SNAPCRAFT_STAGE/console-conf_*.deb $SNAPCRAFT_STAGE/subiquitycore_*.deb \
+          $SNAPCRAFT_PART_INSTALL/var/cache/apt/archives/
+      CONSOLE_CONF="$(basename $SNAPCRAFT_PART_INSTALL/var/cache/apt/archives/console-conf_*.deb)"
+      SUBIQUITY_CORE="$(basename $SNAPCRAFT_PART_INSTALL/var/cache/apt/archives/subiquitycore_*.deb)"
       # install all stage-packages in chroot
       do_chroot "apt update"
       do_chroot "apt dist-upgrade -y"
       # copy already downloaded stage-packges from snapcraft cache
       cp -a $SNAPCRAFT_CACHE/download/*.deb $SNAPCRAFT_PART_INSTALL/var/cache/apt/archives/
       do_chroot "apt install --no-install-recommends -y $PKGS"
+      # install console-conf and subiquity
+      do_chroot "apt install --no-install-recommends -y /var/cache/apt/archives/$CONSOLE_CONF \
+                 /var/cache/apt/archives/$SUBIQUITY_CORE"
+      # clean up apt cache and remove unwanted packages
       do_chroot "apt autoremove -y"
       do_chroot "apt clean"
     override-prime: |
