@@ -366,8 +366,8 @@ parts:
   static:
     after: [ bootstrap ]
     plugin: dump
-    source: https://github.com/snapcore/core20.git
-    source-subdir: static
+    source: static
+    #source-subdir: static
   extra-files:
     after: [ static ]
     plugin: nil
