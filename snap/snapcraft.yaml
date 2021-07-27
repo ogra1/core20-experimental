@@ -363,6 +363,8 @@ parts:
       - -var/log/*
       - -var/log/journal
       - -var/log/private
+    organize:
+      usr/bin/timedatectl: usr/bin/timedatectl.real
   static:
     after: [ bootstrap ]
     plugin: dump
