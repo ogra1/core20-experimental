@@ -124,6 +124,9 @@ parts:
       cp -a $SNAPCRAFT_CACHE/download/*.deb $SNAPCRAFT_PART_INSTALL/var/cache/apt/archives/
       do_chroot "apt install --no-install-recommends -y $PKGS"
 
+      # fix some weirdo behaviour with the dhclient profile
+      echo "" >$SNAPCRAFT_PART_INSTALL/etc/apparmor.d/local/sbin.dhclient
+
       # install console-conf and subiquity
       do_chroot "apt install --no-install-recommends -y /var/cache/apt/archives/$CONSOLE_CONF \
                  /var/cache/apt/archives/$SUBIQUITY_CORE"
@@ -248,7 +251,6 @@ parts:
     after: [ bootstrap ]
     plugin: dump
     source: static
-    #source-subdir: static
   extra-files:
     after: [ static ]
     plugin: nil
@@ -345,6 +347,7 @@ parts:
     override-build: |
       mkdir -p $SNAPCRAFT_PART_INSTALL/etc
       cat >$SNAPCRAFT_PART_INSTALL/etc/motd<<EOF
+
        * Ubuntu Core:     https://www.ubuntu.com/core
        * Community:       https://forum.snapcraft.io
        * Snaps:           https://snapcraft.io
@@ -364,7 +367,7 @@ parts:
         lib/systemd/system/serial-console-conf\@.service
 
       # fix login prompt
-      sed -i 's/^.*DESCRIPTION.*$/DISTRIB_DESCRIPTION="Ubuntu Core"/' etc/lsb-release
+      sed -i 's/^.*DESCRIPTION.*$/DISTRIB_DESCRIPTION="Ubuntu Core 20"/' etc/lsb-release
   extrausers:
     after: [ motd ]
     plugin: nil
