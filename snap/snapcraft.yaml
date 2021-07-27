@@ -85,6 +85,14 @@ parts:
       do_chroot "apt install --no-install-recommends -y $PKGS"
       do_chroot "apt autoremove -y"
       do_chroot "apt clean"
+    override-prime: |
+      snapcraftctl prime
+      for f in timezone localtime hostname; do
+        echo "linking /etc/$f to /etc/writable/"
+        ln -sf writable/$f etc/$f
+      done
+      echo "creating empty /etc/hostname"
+      echo "" >etc/hostname
     build-snaps:
       - yq/v3/stable
     build-packages:
@@ -326,7 +334,6 @@ parts:
       - -etc/debian_version
       - -etc/dpkg
       - -etc/gai.conf
-      - -etc/hostname
       - -etc/hosts
       - -etc/issue
       - -etc/issue.net
@@ -365,6 +372,9 @@ parts:
       - -var/log/private
     organize:
       usr/bin/timedatectl: usr/bin/timedatectl.real
+      etc/timezone: etc/writable/timezone
+      etc/localtime: etc/writable/localtime
+      etc/hostname: etc/writable/hostname
   static:
     after: [ bootstrap ]
     plugin: dump
@@ -446,9 +456,6 @@ parts:
 
       echo "creating the snap binary symlink"
       ln -s /snap/snapd/current/usr/bin/snap $SNAPCRAFT_PART_INSTALL/usr/bin/snap
-
-      echo "creating empty /etc/hostname"
-      touch $SNAPCRAFT_PART_INSTALL/etc/hostname
   os-release:
     after: [ extra-files ]
     plugin: nil
